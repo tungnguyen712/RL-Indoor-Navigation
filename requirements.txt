@@ -2,3 +2,7 @@ pybullet
 gymnasium
 stable-baselines3
 numpy
+tensorboard
+rich
+tqdm
+opencv-python
