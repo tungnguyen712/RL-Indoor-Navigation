@@ -78,28 +78,31 @@ class IndoorMazeEnv(gym.Env):
             )
         self.render_mode = render_mode
 
-        if p.isConnected():
-            p.disconnect()
-
         if self.render_mode == "gui":
-            p.connect(p.GUI)
+            self.physics_client_id = p.connect(p.GUI)
         else:
-            p.connect(p.DIRECT)
+            self.physics_client_id = p.connect(p.DIRECT)
         # basic pybullet setup
-        p.setRealTimeSimulation(0)
-        p.setTimeStep(1.0 / 240.0)
-        p.setAdditionalSearchPath(pybullet_data.getDataPath())
-        p.setGravity(0, 0, -9.81)
-        p.loadURDF("plane.urdf")
+        p.setRealTimeSimulation(0, physicsClientId=self.physics_client_id)
+        p.setTimeStep(1.0 / 240.0, physicsClientId=self.physics_client_id)
+        p.setAdditionalSearchPath(pybullet_data.getDataPath(), physicsClientId=self.physics_client_id)
+        p.setGravity(0, 0, -9.81, physicsClientId=self.physics_client_id)
+        p.loadURDF("plane.urdf", physicsClientId=self.physics_client_id)
 
         # load robot
-        self.robot_id = p.loadURDF("racecar/racecar.urdf", [0, 0, 0.1], globalScaling=0.5)
+        self.robot_id = p.loadURDF(
+            "racecar/racecar.urdf",
+            [0, 0, 0.1],
+            globalScaling=0.5,
+            physicsClientId=self.physics_client_id,
+        )
 
         # create goal marker (VISUAL ONLY - no collision)
         vis_shape = p.createVisualShape(
             p.GEOM_SPHERE,
             radius=self.goal_marker_radius,
             rgbaColor=[0.0, 1.0, 0.0, 0.2],
+            physicsClientId=self.physics_client_id,
         )
 
         self.goal_marker_id = p.createMultiBody(
@@ -107,30 +110,42 @@ class IndoorMazeEnv(gym.Env):
             baseCollisionShapeIndex=-1,  # no collision shape
             baseVisualShapeIndex=vis_shape,
             basePosition=[0, 0, self.goal_marker_radius],
+            physicsClientId=self.physics_client_id,
         )
         
         # add strong green outline for visibility
-        p.changeVisualShape(self.goal_marker_id, -1, rgbaColor=[0.0, 1.0, 0.0, 0.2])
-        p.changeVisualShape(self.goal_marker_id, -1, specularColor=[0.0, 1.0, 0.0])
+        p.changeVisualShape(
+            self.goal_marker_id,
+            -1,
+            rgbaColor=[0.0, 1.0, 0.0, 0.2],
+            physicsClientId=self.physics_client_id,
+        )
+        p.changeVisualShape(
+            self.goal_marker_id,
+            -1,
+            specularColor=[0.0, 1.0, 0.0],
+            physicsClientId=self.physics_client_id,
+        )
 
         # simplify GUI and set up camera
         if self.render_mode == "gui":
-            p.configureDebugVisualizer(p.COV_ENABLE_GUI, 0)
-            p.configureDebugVisualizer(p.COV_ENABLE_SHADOWS, 0)
+            p.configureDebugVisualizer(p.COV_ENABLE_GUI, 0, physicsClientId=self.physics_client_id)
+            p.configureDebugVisualizer(p.COV_ENABLE_SHADOWS, 0, physicsClientId=self.physics_client_id)
             # set initial camera position on birdseye view
             p.resetDebugVisualizerCamera(
                 cameraDistance=5.0,
                 cameraYaw=0,
                 cameraPitch=-45,
-                cameraTargetPosition=[2.0, 2.0, 0]
+                cameraTargetPosition=[2.0, 2.0, 0],
+                physicsClientId=self.physics_client_id,
             )
 
         # get joint ids
         self.rear_wheel_joints = []
         self.front_wheel_joints = []
         self.steering_joints = []
-        for i in range(p.getNumJoints(self.robot_id)):
-            joint_info = p.getJointInfo(self.robot_id, i)
+        for i in range(p.getNumJoints(self.robot_id, physicsClientId=self.physics_client_id)):
+            joint_info = p.getJointInfo(self.robot_id, i, physicsClientId=self.physics_client_id)
             joint_name = joint_info[1].decode("utf-8")
             if joint_name in ["left_rear_wheel_joint", "right_rear_wheel_joint"]:
                 self.rear_wheel_joints.append(i)
@@ -178,8 +193,14 @@ class IndoorMazeEnv(gym.Env):
                 self.robot_id,
                 [self.start_pos[0], self.start_pos[1], 0.1],
                 p.getQuaternionFromEuler([0, 0, spawn_yaw]),
+                physicsClientId=self.physics_client_id,
             )
-            p.resetBaseVelocity(self.robot_id, linearVelocity=[0, 0, 0], angularVelocity=[0, 0, 0])
+            p.resetBaseVelocity(
+                self.robot_id,
+                linearVelocity=[0, 0, 0],
+                angularVelocity=[0, 0, 0],
+                physicsClientId=self.physics_client_id,
+            )
 
             # stop all motors
             for i in self.rear_wheel_joints:
@@ -188,7 +209,8 @@ class IndoorMazeEnv(gym.Env):
                     i,
                     p.VELOCITY_CONTROL,
                     targetVelocity=0,
-                    force=0
+                    force=0,
+                    physicsClientId=self.physics_client_id,
                 )
 
             for i in self.steering_joints:
@@ -197,12 +219,13 @@ class IndoorMazeEnv(gym.Env):
                     i,
                     p.POSITION_CONTROL,
                     targetPosition=0,
-                    force=0
+                    force=0,
+                    physicsClientId=self.physics_client_id,
                 )
             
             # step simulation to settle physics
             for _ in range(10):
-                p.stepSimulation()
+                p.stepSimulation(physicsClientId=self.physics_client_id)
             
             if not self.check_collision():
                 spawn_successful = True
@@ -216,12 +239,13 @@ class IndoorMazeEnv(gym.Env):
             self.goal_marker_id,
             [self.goal_pos[0], self.goal_pos[1], self.goal_marker_radius],
             [0, 0, 0, 1],
+            physicsClientId=self.physics_client_id,
         )
 
         # reset lidar debug lines
         if self.render_mode == "gui":
             for line_id in self.lidar_debug_line_ids:
-                p.removeUserDebugItem(line_id)
+                p.removeUserDebugItem(line_id, physicsClientId=self.physics_client_id)
             self.lidar_debug_line_ids = []
             
             # Update camera to focus on the current maze
@@ -231,7 +255,8 @@ class IndoorMazeEnv(gym.Env):
                 cameraDistance=max(len(self.grid), len(self.grid[0])) * self.cell_size * 0.8,
                 cameraYaw=45,
                 cameraPitch=-45,
-                cameraTargetPosition=[maze_center_x, maze_center_y, 0]
+                cameraTargetPosition=[maze_center_x, maze_center_y, 0],
+                physicsClientId=self.physics_client_id,
             )
 
         obs = self.get_observation()
@@ -249,7 +274,7 @@ class IndoorMazeEnv(gym.Env):
         
         self.control_robot(action)
         for _ in range(self.physics_steps_per_action):
-            p.stepSimulation()
+            p.stepSimulation(physicsClientId=self.physics_client_id)
 
         current_collision = self.check_collision()
         self.collided_this_step = current_collision and not self.prev_collided
@@ -280,8 +305,9 @@ class IndoorMazeEnv(gym.Env):
         return obs, reward, terminated, truncated, info
 
     def close(self):
-        if p.isConnected():
-            p.disconnect()
+        if getattr(self, "physics_client_id", None) is not None and p.isConnected(self.physics_client_id):
+            p.disconnect(self.physics_client_id)
+            self.physics_client_id = None
 
     def create_walls(self):
         grid_rows = len(self.grid)
@@ -306,8 +332,17 @@ class IndoorMazeEnv(gym.Env):
                         color = [0.5, 0.5, 0.5, 1]
                     
                     # create wall collision and visual shapes
-                    collision_shape_id = p.createCollisionShape(p.GEOM_BOX, halfExtents=[wall_width/2, wall_depth/2, self.wall_height/2])
-                    visual_shape_id = p.createVisualShape(p.GEOM_BOX, halfExtents=[wall_width/2, wall_depth/2, self.wall_height/2], rgbaColor=color)
+                    collision_shape_id = p.createCollisionShape(
+                        p.GEOM_BOX,
+                        halfExtents=[wall_width/2, wall_depth/2, self.wall_height/2],
+                        physicsClientId=self.physics_client_id,
+                    )
+                    visual_shape_id = p.createVisualShape(
+                        p.GEOM_BOX,
+                        halfExtents=[wall_width/2, wall_depth/2, self.wall_height/2],
+                        rgbaColor=color,
+                        physicsClientId=self.physics_client_id,
+                    )
 
                     # create wall body
                     body_id = p.createMultiBody(
@@ -318,13 +353,14 @@ class IndoorMazeEnv(gym.Env):
                             col * self.cell_size + self.cell_size / 2,
                             row * self.cell_size + self.cell_size / 2,
                             self.wall_height / 2,
-                        ]
+                        ],
+                        physicsClientId=self.physics_client_id,
                     )
                     self.wall_ids.append(body_id)
 
     def remove_walls(self):
         for wall_id in self.wall_ids:
-            p.removeBody(wall_id)
+            p.removeBody(wall_id, physicsClientId=self.physics_client_id)
         self.wall_ids = []
 
     def sample_random_position(self, min_dist=1, max_tries=100):
@@ -404,6 +440,7 @@ class IndoorMazeEnv(gym.Env):
             controlMode=p.VELOCITY_CONTROL,
             targetVelocity=left_vel,
             force=200,  # increased force for better control
+            physicsClientId=self.physics_client_id,
         )
         # right wheel (joint 3)
         p.setJointMotorControl2(
@@ -412,6 +449,7 @@ class IndoorMazeEnv(gym.Env):
             controlMode=p.VELOCITY_CONTROL,
             targetVelocity=right_vel,
             force=200,
+            physicsClientId=self.physics_client_id,
         )
         
         # lock steering joints at 0 (straight) for differential drive
@@ -422,17 +460,24 @@ class IndoorMazeEnv(gym.Env):
                 controlMode=p.POSITION_CONTROL,
                 targetPosition=0,
                 force=50,
+                physicsClientId=self.physics_client_id,
             )
 
     def get_observation(self):
         # get robot position, yaw, and velocities
-        position, orientation = p.getBasePositionAndOrientation(self.robot_id)
+        position, orientation = p.getBasePositionAndOrientation(
+            self.robot_id,
+            physicsClientId=self.physics_client_id,
+        )
         robot_x, robot_y, robot_z = position
         euler = p.getEulerFromQuaternion(orientation)
         yaw = euler[2]
         
         # Get velocities
-        linear_vel, angular_vel = p.getBaseVelocity(self.robot_id)
+        linear_vel, angular_vel = p.getBaseVelocity(
+            self.robot_id,
+            physicsClientId=self.physics_client_id,
+        )
         vx, vy = linear_vel[0], linear_vel[1]
         wz = angular_vel[2]
         
@@ -458,7 +503,7 @@ class IndoorMazeEnv(gym.Env):
             ])
 
         # raycast each direction up to lidar_max_range, normalize distances to [0, 1]
-        results = p.rayTestBatch(ray_from, ray_to)
+        results = p.rayTestBatch(ray_from, ray_to, physicsClientId=self.physics_client_id)
         # reset lidar debug lines
         # if self.render_mode == "gui" and self.step_count % self.debug_lidar_every == 0:
         #     # remove previous lines
@@ -527,7 +572,10 @@ class IndoorMazeEnv(gym.Env):
 
     def compute_reward(self):
         # get robot position and orientation
-        position, orientation = p.getBasePositionAndOrientation(self.robot_id)
+        position, orientation = p.getBasePositionAndOrientation(
+            self.robot_id,
+            physicsClientId=self.physics_client_id,
+        )
         robot_x, robot_y = position[0], position[1]
         euler = p.getEulerFromQuaternion(orientation)
         robot_yaw = euler[2]
@@ -541,7 +589,10 @@ class IndoorMazeEnv(gym.Env):
         reward = 0.0
         
         if self.prev_goal_dist is not None:
-            linear_vel, _ = p.getBaseVelocity(self.robot_id)
+            linear_vel, _ = p.getBaseVelocity(
+                self.robot_id,
+                physicsClientId=self.physics_client_id,
+            )
             robot_forward = [np.cos(robot_yaw), np.sin(robot_yaw)]
             forward_speed = linear_vel[0] * robot_forward[0] + linear_vel[1] * robot_forward[1]
             
@@ -581,13 +632,16 @@ class IndoorMazeEnv(gym.Env):
         return reward
 
     def check_success(self):
-        position, _ = p.getBasePositionAndOrientation(self.robot_id)
+        position, _ = p.getBasePositionAndOrientation(
+            self.robot_id,
+            physicsClientId=self.physics_client_id,
+        )
         robot_x, robot_y = position[0], position[1]
         dist = np.linalg.norm(np.array([robot_x, robot_y]) - np.array(self.goal_pos))
         return dist <= self.goal_radius
 
     def check_collision(self):
-        contacts = p.getContactPoints(bodyA=self.robot_id)
+        contacts = p.getContactPoints(bodyA=self.robot_id, physicsClientId=self.physics_client_id)
         wall_ids_set = set(self.wall_ids)
         for contact in contacts:
             bodyA_id = contact[1]
@@ -637,7 +691,10 @@ def main():
                 obs, reward, terminated, truncated, info = env.step(action)
 
                 if t % 20 == 0:
-                    pos, _ = p.getBasePositionAndOrientation(env.robot_id)
+                    pos, _ = p.getBasePositionAndOrientation(
+                        env.robot_id,
+                        physicsClientId=env.physics_client_id,
+                    )
                     print("Reward:", reward)
                     print("Terminated:", terminated, "\tTruncated:", truncated)
                     print("Robot pos: ", pos[0], pos[1])
