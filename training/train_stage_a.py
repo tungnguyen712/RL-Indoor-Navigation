@@ -49,6 +49,9 @@ EVAL_FREQ = 50_000
 N_EVAL_EPISODES = 20
 CHECKPOINT_FREQ = 250_000
 
+def callback_freq(freq):
+    return max(freq // NUM_ENVS, 1)
+
 def load_mazes(folder_path):
     maze_layouts = []
     for f in os.listdir(folder_path):
@@ -167,14 +170,14 @@ def main():
         eval_env,
         best_model_save_path=models_dir,
         log_path=logs_dir,
-        eval_freq=EVAL_FREQ,
+        eval_freq=callback_freq(EVAL_FREQ),
         n_eval_episodes=N_EVAL_EPISODES,
         deterministic=True,
         render=False
     )
     
     checkpoint_callback = CheckpointCallback(
-        save_freq=CHECKPOINT_FREQ,
+        save_freq=callback_freq(CHECKPOINT_FREQ),
         save_path=models_dir,
         name_prefix="stage_a_checkpoint",
         save_replay_buffer=False,
